@@ -1,4 +1,4 @@
-import os
+import os, sys
 import json
 import shutil
 import tempfile
@@ -62,7 +62,7 @@ def simulate():
             
             # 加入 --lab 參數
             cmd = [
-                'python3', 
+                sys.executable, 
                 'mock_runner.py', 
                 'user_script.py',
                 '--lab', str(lab_label)
