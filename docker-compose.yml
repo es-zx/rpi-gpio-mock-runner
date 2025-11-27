@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  mock-server:
+    build: .
+    container_name: rpi-mock-runner
+    ports:
+      - "5050:5050"  # 將容器的 5050 對應到電腦的 5050
+    volumes:
+      # (選用) 如果你想在宿主機看到 log 檔，可以把這行打開，但建議不要，避免權限問題
+      # - ./logs:/app/logs
+      - ./devices:/app/devices # 讓你在外面改 devices 程式碼，裡面會同步 (開發方便)
+    environment:
+      - PYTHONUNBUFFERED=1 # 讓 Log 直接印出來，不要緩衝
