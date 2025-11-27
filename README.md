@@ -24,10 +24,19 @@
 ```
 .
 ├── mock_runner.py               # 模擬執行主程式
+├── devices/                     # 虛擬設備邏輯
+│   ├── __init__.py
+│   ├── base.py
+│   └── hc_sr04.py
+├── server.py                    # Flask API 伺服器
+├── test_client.py               # API 測試工具
+├── Dockerfile                   # Docker 設定檔
+├── docker-compose.yml           # Docker Compose 設定
 ├── breathing_led.py             # LED 呼吸燈範例
 ├── buzzer.py                    # 蜂鳴器（PWM）範例
 ├── clock.py                     # 時脈信號輸出範例
 ├── hc-sr04.py                   # 超音波感測器範例（模擬）
+├── smart_alarm.py               # 智慧警報器範例 (整合測試)
 ├── format_clock_log_grouped.py  # 時脈輸出格式化工具
 ├── replay_clock_log.py          # 時脈輸出重播工具
 ├── clock_output.log             # 範例輸出紀錄檔
@@ -46,12 +55,12 @@ pip install Mock.GPIO
 
 ---
 
-## 使用方式
+## 使用方式（本地執行）
 
 ### 1. 在桌機上執行你的樹莓派程式
 
 ```bash
-python mock_runner.py breathing_led.py
+python mock_runner.py breathing_led.py --lab led
 ```
 
 此指令會：  
@@ -87,18 +96,6 @@ python mock_runner.py breathing_led.py
       "action": "PWM.ChangeDutyCycle",
       "pin": 7,
       "value": 0
-    },
-    {
-      "time": 0.055,
-      "action": "PWM.ChangeDutyCycle",
-      "pin": 7,
-      "value": 5
-    },
-    {
-      "time": 0.11,
-      "action": "PWM.ChangeDutyCycle",
-      "pin": 7,
-      "value": 10
     }
   ]
 }
@@ -136,14 +133,117 @@ python format_clock_log_grouped.py
 
 ---
 
-## LED 格式化邏輯
+## API 伺服器與遠端模擬
 
-LED 格式化的邏輯基於輸出腳位的狀態變化：  
-1. 將同一腳位連續相同電位的段落合併  
-2. 計算每一段的持續時間與時間區間  
-3. 輸出整理後的結構化資料  
+除了直接在本地執行 `mock_runner.py`，本專案也支援透過 **Flask API 伺服器** 進行遠端模擬。這允許前端網頁或教學平台將程式碼傳送至後端執行，並取得 JSON 格式的模擬結果。
 
-用途：  
-- 分析 LED 或時脈的實際週期  
-- 估算開關頻率與能量消耗  
-- 比對實機與模擬結果是否一致
+### 1. 啟動 API 伺服器
+
+伺服器負責接收程式碼、建立隔離的執行環境（支援 Docker）、執行模擬並回傳結果。
+
+#### 方式 A：使用 Docker（推薦，最穩定）
+
+為了避免 Windows 環境下的 Process 與 Signal 問題，強烈建議使用 Docker 啟動伺服器。
+
+1. 確保已安裝 Docker Desktop。
+2. 在專案根目錄執行：
+
+```bash
+docker-compose up --build
+```
+
+伺服器啟動後將監聽 `http://localhost:5050`。
+
+#### 方式 B：本地 Python 直接執行
+
+若在 Linux/macOS 環境，也可直接執行：
+
+1. 安裝伺服器依賴：
+   ```bash
+   pip install Flask requests
+   ```
+2. 啟動伺服器：
+   ```bash
+   python server.py
+   ```
+
+---
+
+### 2. 使用測試客戶端 (Client)
+
+`test_client.py` 是一個用來測試 API 的工具，它會讀取你的 Python 檔案，將其發送給伺服器，並顯示回傳的模擬結果。
+
+#### 指令格式
+
+```bash
+python test_client.py <檔案名稱> <Lab標籤> [模擬秒數] [模擬距離]
+```
+
+- **檔案名稱**：要測試的 Python 腳本（例如 `hc-sr04.py`）。
+- **Lab標籤**：告訴模擬器要載入哪些虛擬設備（例如 `led`, `hc-sr04`）。
+- **模擬秒數**（選填）：模擬執行的時間，預設 5 秒。
+- **模擬距離**（選填）：僅用於超音波實驗，設定障礙物距離（cm），預設 50cm。
+
+#### 使用範例
+
+**範例 1：測試 LED 呼吸燈（模擬 3 秒）**
+
+```bash
+python test_client.py breathing_led.py led 3
+```
+
+**範例 2：測試超音波感測器（模擬 2 秒，障礙物距離 30cm）**
+
+```bash
+python test_client.py hc-sr04.py hc-sr04 2 30
+```
+
+**範例 3：測試智慧警報器（模擬危險距離 5cm）**
+
+```bash
+python test_client.py smart_alarm.py hc-sr04 2 5
+```
+
+執行成功後，會在目錄下產生 `client_output.json`，內容包含完整的 GPIO 操作紀錄。
+
+---
+
+### 3. API 規格說明
+
+若你想自行開發前端呼叫此服務，API 規格如下：
+
+- **Endpoint**: `POST /api/simulate`
+- **Content-Type**: `application/json`
+
+**請求格式 (Request Payload):**
+
+```json
+{
+  "code": "import RPi.GPIO as GPIO...",  // 完整的 Python 程式碼字串
+  "lab": "hc-sr04",                      // 實驗標籤 (led, buzzer, hc-sr04)
+  "duration": 5,                         // 模擬秒數 (Max 10s)
+  "distance": 30                         // (選填) 超音波模擬距離
+}
+```
+
+**回應格式 (Response):**
+
+```json
+{
+  "status": "completed",
+  "input_settings": {
+    "lab": "hc-sr04",
+    "duration": 5.0,
+    "distance": 30
+  },
+  "logs": [
+    {
+      "time": 0.51,
+      "action": "GPIO.output",
+      "pin": 27,
+      "value": 1
+    }
+    // ... 更多操作紀錄
+  ]
+}
+```
